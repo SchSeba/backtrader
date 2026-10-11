@@ -366,7 +366,7 @@ class AbstractDataBase(dataseries.OHLCDateTime, metaclass=MetaAbstractDataBase):
             self.tick_last = getattr(self.lines, alias0)[0]
 
     def advance_peek(self):
-        if len(self) < self.buflen():
+        if self.lines.datetime.idx + 1 < self.lines.datetime.buflen():
             return self.lines.datetime[1]  # return the future
 
         return float('inf')  # max date else
@@ -380,7 +380,7 @@ class AbstractDataBase(dataseries.OHLCDateTime, metaclass=MetaAbstractDataBase):
         self.lines.advance(size)
 
         if datamaster is not None:
-            if len(self) > self.buflen():
+            if self.lines.datetime.idx + 1 > self.lines.datetime.buflen():
                 # if no bar can be delivered, fill with an empty bar
                 self.rewind()
                 self.lines.forward()
@@ -391,14 +391,18 @@ class AbstractDataBase(dataseries.OHLCDateTime, metaclass=MetaAbstractDataBase):
             else:
                 if ticks:
                     self._tick_fill()
-        elif len(self) < self.buflen():
+        elif self.lines.datetime.idx + 1 < self.lines.datetime.buflen():
             # a resampler may have advance us past the last point
             if ticks:
                 self._tick_fill()
 
     def next(self, datamaster=None, ticks=True):
 
-        if len(self) >= self.buflen():
+        # len(self) counts every delivered bar; bounded buffers only retain a
+        # window. A rewind can leave a future bar inside that window. Compare
+        # the datetime cursor to its own capacity: price lines may retain more
+        # bars for indicator lookbacks.
+        if self.lines.datetime.idx + 1 >= self.lines.datetime.buflen():
             if ticks:
                 self._tick_nullify()
 

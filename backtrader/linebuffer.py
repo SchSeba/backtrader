@@ -271,7 +271,9 @@ class LineBuffer(LineSingle):
             self.array.pop()
 
     def rewind(self, size=1):
-        self.idx -= size
+        # A retained future bar must become invisible even when a QBuffer has
+        # reached its capacity. Unlike backwards(), rewind keeps the array.
+        self.set_idx(self._idx - size, force=True)
         self.lencount -= size
 
     def advance(self, size=1):
