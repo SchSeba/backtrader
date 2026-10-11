@@ -1575,7 +1575,6 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
                 livecount = sum(d._laststatus == d.LIVE for d in datas)
                 newqcheck = not livecount or livecount == ldatas_noclones
 
-            lastret = False
             # Notify anything from the store even before moving datas
             # because datas may not move due to an error reported by the store
             self._storenotify()
@@ -1598,6 +1597,15 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
             if not d0ret and any((dret is None for dret in drets)):
                 d0ret = None
 
+            if d0ret is False:
+                # Final filter bars need the same clock selection and alignment
+                # as ordinary bars, including separate final resample times.
+                drets = [data0._last()]
+                drets.extend(data._last(datamaster=data0) for data in datas1)
+                d0ret = any(drets)
+                if not d0ret:
+                    break
+
             if d0ret:
                 dts = []
                 for i, ret in enumerate(drets):
@@ -1607,8 +1615,11 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
                 if onlyresample or noresample:
                     dt0 = min((d for d in dts if d is not None))
                 else:
-                    dt0 = min((d for i, d in enumerate(dts)
-                               if d is not None and i not in rsonly))
+                    normaldts = [d for i, d in enumerate(dts)
+                                 if d is not None and i not in rsonly]
+                    # The source feeds may have ended while a resampled bar
+                    # still awaits delivery. Let that bar advance the clock.
+                    dt0 = min(normaldts or [d for d in dts if d is not None])
 
                 dmaster = datas[dts.index(dt0)]  # and timemaster
                 self._dtmaster = dmaster.num2date(dt0)
@@ -1651,21 +1662,12 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
                 # getting resample and others to produce timely bars
                 for data in datas:
                     data._check()
-            else:
-                lastret = data0._last()
-                for data in datas1:
-                    lastret += data._last(datamaster=data0)
-
-                if not lastret:
-                    # Only go extra round if something was changed by "lasts"
-                    break
-
             # Datas may have generated a new notification after next
             self._datanotify()
             if self._event_stop:  # stop if requested
                 return
 
-            if d0ret or lastret:  # if any bar, check timers before broker
+            if d0ret:  # if any bar, check timers before broker
                 self._check_timers(runstrats, dt0, cheat=True)
                 if self.p.cheat_on_open:
                     for strat in runstrats:
@@ -1677,7 +1679,7 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
             if self._event_stop:  # stop if requested
                 return
 
-            if d0ret or lastret:  # bars produced by data or filters
+            if d0ret:  # bars produced by data or filters
                 self._check_timers(runstrats, dt0, cheat=False)
                 for strat in runstrats:
                     strat._next()
