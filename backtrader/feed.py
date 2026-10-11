@@ -793,6 +793,7 @@ class DataClone(AbstractDataBase):
             for line, dline in zip(self.lines, self.data.lines):
                 line[0] = dline[0]
 
+            self._dlen = len(self.data)
             return True
 
         # Not preloading
@@ -800,13 +801,16 @@ class DataClone(AbstractDataBase):
             # Data not beyond last seen bar
             return False
 
+        # Count source consumption here only. Advancing a previously loaded
+        # clone bar (for example after synchronization rewinds an aggregate)
+        # does not consume another source bar.
         self._dlen += 1
+        # The source may already have advanced while this clone delivered a
+        # buffered aggregate. Read the next unconsumed source bar, rather than
+        # copying the newest bar repeatedly to catch up.
+        source_ago = self._dlen - len(self.data)
 
         for line, dline in zip(self.lines, self.data.lines):
-            line[0] = dline[0]
+            line[0] = dline[source_ago]
 
         return True
-
-    def advance(self, size=1, datamaster=None, ticks=True):
-        self._dlen += size
-        super(DataClone, self).advance(size, datamaster, ticks=ticks)
