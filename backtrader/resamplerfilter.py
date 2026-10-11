@@ -26,7 +26,7 @@ from datetime import datetime, date, timedelta
 
 from .dataseries import TimeFrame, _Bar
 from . import metabase
-from .utils.date import date2num, num2date
+from .utils.date import date2num, num2date, UTC
 
 
 class DTFaker(object):
@@ -51,7 +51,7 @@ class DTFaker(object):
         self.p = self
 
         if forcedata is None:
-            _dtime = datetime.now(datetime.UTC) + data._timeoffset()
+            _dtime = datetime.now(UTC) + data._timeoffset()
             self._dt = dt = date2num(_dtime)  # utc-like time
             self._dtime = data.num2date(dt)  # localized time
         else:
