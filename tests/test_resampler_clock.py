@@ -170,12 +170,9 @@ def test_empty_polls_and_reconnect_preserve_completed_bars_and_orders(
     monkeypatch.setattr(resamplerfilter, "datetime", Clock)
     baseline, baseline_engine = run_poll_engine(clone, False)
     polled, polled_engine = run_poll_engine(clone, True)
-    if clone:
-        assert clock_calls and all(tz is UTC for tz in clock_calls)
-    else:
-        # A separate resampler synchronizes to the primary feed's forced
-        # clock; it must not replace that clock with wall time.
-        assert not clock_calls
+    # Both producers are historical/CONNECTED, not LIVE. Empty replay polls
+    # synchronize to source observations rather than today's wall clock.
+    assert not clock_calls
     assert polled.aggregates == baseline.aggregates
     assert len(polled.aggregates) == 5
     assert [bt.num2date(bar[0]).minute for bar in polled.aggregates] == [

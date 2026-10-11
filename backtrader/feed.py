@@ -465,6 +465,16 @@ class AbstractDataBase(dataseries.OHLCDateTime, metaclass=MetaAbstractDataBase):
         return bool(ret)
 
     def _check(self, forcedata=None):
+        if forcedata is None:
+            source = self.data if self._clone else self
+            # Empty historical/backfill polls do not move the market clock
+            # to wall time. Doing so can publish a future aggregate, leave a
+            # clone behind its bounded source, and lose subsequent bars.
+            # A source explicitly in LIVE status keeps wall-clock flushing.
+            if source._laststatus != source.LIVE:
+                if not len(source):
+                    return
+                forcedata = source
         ret = 0
         for ff, fargs, fkwargs in self._filters:
             if not hasattr(ff, 'check'):

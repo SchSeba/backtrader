@@ -1593,6 +1593,32 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
                 d.do_qcheck(newqcheck, qlapse.total_seconds())
                 drets.append(d.next(ticks=False))
 
+            # A resampler can read ahead while its normal source is waiting
+            # for another poll. That is not source exhaustion: retain the
+            # aggregate for synchronization instead of advancing the clock
+            # to it and exposing future values to indicators and the broker.
+            resamplemasters = {}
+            if not onlyresample and not noresample:
+                normalrets = [ret for i, ret in enumerate(drets)
+                              if i not in rsonly]
+                waiting = any(ret is None for ret in normalrets)
+                normalstatus = {id(data): ret for i, (data, ret) in
+                                enumerate(zip(datas, drets)) if i not in rsonly}
+                for i in rsonly:
+                    data = datas[i]
+                    source = data.data if data._clone else None
+                    if source is not None and id(source) in normalstatus:
+                        sourcewaiting = normalstatus[id(source)] is None
+                        if sourcewaiting:
+                            resamplemasters[i] = source
+                        defer = sourcewaiting and (not len(source) or
+                                    (drets[i] and data.datetime[0] > source.datetime[0]))
+                    else:
+                        defer = waiting and not any(normalrets)
+                    if defer and drets[i]:
+                        data.rewind()
+                        drets[i] = False
+
             d0ret = any((dret for dret in drets))
             if not d0ret and any((dret is None for dret in drets)):
                 d0ret = None
@@ -1633,8 +1659,11 @@ class Cerebro(ParamsBase, metaclass=MetaParams):
 
                     # try to get a data by checking with a master
                     d = datas[i]
-                    d._check(forcedata=dmaster)  # check to force output
-                    if d.next(datamaster=dmaster, ticks=False):  # retry
+                    checkmaster = resamplemasters.get(i, dmaster)
+                    if not len(checkmaster):
+                        continue  # a waiting clone source has no clock yet
+                    d._check(forcedata=checkmaster)  # check to force output
+                    if d.next(datamaster=checkmaster, ticks=False):  # retry
                         dts[i] = d.datetime[0]  # good -> store
                         # self._plotfillers2[i].append(slen)  # mark as fill
                     else:
